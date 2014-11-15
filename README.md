@@ -18,3 +18,7 @@ Twitter dla ubogich
 3. Na koniec:
 
 - [ ] interfejs w qt
+
+4. A tak sobie sprawdzam:
+
+- [x] zrobic commit
