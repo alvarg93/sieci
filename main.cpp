@@ -47,12 +47,19 @@ public:
     user(){};
 };
 
+struct remote_client_data {
+    int client_socket;
+    struct sockaddr_in* stClientAddr;
+    socklen_t nTmp;
+};
+
 user* my_user;
 fstream pref_file,my_tweets_file;
 
 void clear_screen();
 void write_tweet();
 void read_tweets();
+void* remote_client(void* arg);
 
 void* server_func(void* arg)
 {
@@ -103,24 +110,15 @@ void* server_func(void* arg)
            exit(1);
        }
 
-           printf("%s: [connection from %s]\n",
-                  "Twitter", inet_ntoa((struct in_addr)stClientAddr.sin_addr));
-           time_t now;
-           struct tm *local;
-           time (&now);
-           local = localtime(&now);
-           int n;
-           my_tweets_file.open("my_tweets",ios_base::in);
-           if(my_tweets_file.is_open()) cout<<"Opened tweets file\n";
+        pthread_t tid;
+        struct remote_client_data data;
+        data.client_socket = nClientSocket;
+        data.stClientAddr = &stClientAddr;
+        data.nTmp = nTmp;
 
-            while(!my_tweets_file.eof()) {
-                char buffer[4096];
-                cout<<"reading!\n"<<endl;
-                my_tweets_file.read(buffer,4096);
-                write(nClientSocket, buffer, my_tweets_file.gcount());
-            }
-            my_tweets_file.close();
-            close(nClientSocket);
+        pthread_create(&tid,NULL,remote_client,(void*)&data);
+
+
        }
 
    close(nSocket);
@@ -128,6 +126,41 @@ void* server_func(void* arg)
 }
 
 void* remote_client(void* arg) {
+
+    cout<<"Remote Client Thread Created!\n";
+
+    struct remote_client_data* client_data = (struct remote_client_data*)arg;
+
+    int nClientSocket = client_data->client_socket;
+    struct sockaddr_in stClientAddr = *client_data->stClientAddr;
+    socklen_t nTmp = client_data->nTmp;
+
+    printf("%s: [connection from %s]\n",
+    "Twitter", inet_ntoa((struct in_addr)stClientAddr.sin_addr));
+    time_t now;
+    struct tm *local;
+    time (&now);
+    local = localtime(&now);
+    my_tweets_file.open("my_tweets",ios_base::in);
+    if(my_tweets_file.is_open()) cout<<"Opened tweets file\n";
+
+
+    char read_buffer[512];
+    string line;
+    int n = read(nClientSocket,read_buffer,512);
+    cout<<"User "<<read_buffer<<" connected!\n";
+    if(n>0) {
+        while(!my_tweets_file.eof()) {
+            char buffer[4096];
+            getline(my_tweets_file,line);
+            line+='\n';
+
+            //my_tweets_file.read(buffer,4096);
+            write(nClientSocket, line.c_str(), line.size());
+        }
+    }
+    my_tweets_file.close();
+    close(nClientSocket);
 }
 
 void* local_client (void* arg)
@@ -167,11 +200,6 @@ void* local_client (void* arg)
 
 }
 
-
-bool saveValueToFile(fstream file, string value) {
-    file<<value<<endl;
-}
-
 void init_user() {
 
     cout << "Initialising twitter distributed app.";
@@ -181,15 +209,6 @@ void init_user() {
     cin>>my_user->username;
     pref_file<<my_user->username<<endl;
 }
-
-string readValueFromFile(fstream file) {
-    string a;
-    file>>a;
-    return a;
-}
-
-
-
 
 int main() {
 
@@ -279,9 +298,10 @@ void write_tweet() {
 
     struct tm *tweet_time = gmtime(&timer);
 
-    my_tweets_file<<asctime(tweet_time)<<endl;
+    my_tweets_file<<"username: {\n"<<my_user->username<<"\n}\n";
+    my_tweets_file<<"date: {\n"<<tweet_time<<"\n}\n";
 
-    my_tweets_file<<tweet<<endl;
+    my_tweets_file<<"content: {"<<tweet<<"}\n";
 
     my_tweets_file.close();
 
@@ -294,7 +314,8 @@ void read_tweets() {
 
 	int sck, odp;
 
-	printf ("Usługa %d na %s z serwera %s :\n", service_port, protocol, server);
+	//cout<<"Podaj adres IP\n";
+	//scanf("%s",server);
 
 	memset (&sck_addr, 0, sizeof sck_addr);
 	sck_addr.sin_family = AF_INET;
@@ -310,6 +331,9 @@ void read_tweets() {
 		perror ("Brak połączenia");
 		exit (EXIT_FAILURE);
 	}
+
+
+    write (sck, my_user->username.c_str(), my_user->username.size());
 
 
     cout<<"message from server:\n";
